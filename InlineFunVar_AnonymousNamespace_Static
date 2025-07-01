@@ -1,0 +1,125 @@
+/*
+project/
+├── include/
+│   └── logger.hpp         ← Uses `inline`
+├── src/
+│   ├── module/
+│   │   └── util.cpp       ← Uses anonymous namespace
+│   └── main.cpp
+├── lib/
+│   └── local.cpp          ← Uses `static`
+└── CMakeLists.txt (or Makefile)
+*/
+
+FileName: include/logger.hpp
+#pragma once
+#include <iostream>
+#include <string>
+
+inline void log(const std::string& msg) {
+    std::cout << "[LOG] " << msg << std::endl;
+}
+
+inline int globalCounter = 0;
+Behavior
+Can be included in any number of .cpp files without ODR violations.
+Has external linkage: symbol is the same across TUs.
+Useful in header-only utilities.
+The compiler:
+Sees that counter may be defined in multiple .cpp files via the header.
+Ensures that the linker deduplicates the symbol to only one instance.
+Without inline, you'd get a linker error: "multiple definition of counter".
+
+Great question — you're asking whether an inline variable, like logLevel, when incremented in one .cpp file, reflects its new value in other .cpp files.
+✅ Short Answer:
+Yes — the increment is visible across all translation units.
+✅ Why?
+Because inline variables (since C++17) have external linkage — they're shared, single instances across all files that include the header. 
+This means all .cpp files are referring to the same variable in memory.
+
+FileName: include/logger.hpp
+#pragma once
+#include <iostream>
+
+inline int logLevel = 0;
+
+inline void log(const std::string& msg) {
+    std::cout << "[LOG " << logLevel << "] " << msg << std::endl;
+}
+/*********************************/
+
+FileName: src/main.cpp
+#include "../include/logger.hpp"
+
+void run() {
+    log("Main start");
+    logLevel++;  // Increments global logLevel
+}
+/*******************************/
+FileName: src/module/util.cpp
+#include "../include/logger.hpp"
+
+void helper() {
+    log("From helper"); // Will see updated logLevel
+}
+/*********************************/
+FileName: main() Execution:
+int main() {
+    run();       // logLevel becomes 1
+    helper();    // log prints with logLevel = 1
+    return 0;
+}
+/********************************************/
+
+FileName: src/module/util.cpp
+#include <string>
+
+namespace {
+    void internalHelper(const std::string& msg) {
+        // Only available inside this file
+        std::cout << "Internal helper: " << msg << std::endl;
+    }
+
+    int fileLocalId = 42;
+}
+
+void publicApi() {
+    internalHelper("Called from publicApi");
+}
+Behavior
+Everything in the anonymous namespace has internal linkage.
+If another .cpp file defines the same function name in its own anonymous namespace, there’s no conflict (they’re different symbols).
+Preferred over static in modern C++.
+/********************************************/
+
+FileName: lib/local.cpp
+#include <iostream>
+
+static void fileLocalFunc() {
+    std::cout << "Local static function" << std::endl;
+}
+
+void useLocalFunc() {
+    fileLocalFunc(); // Can call it inside this file
+}
+Behavior:
+fileLocalFunc has internal linkage, visible only within this file.
+If another .cpp file defines a static function with the same name, there’s no conflict.
+Same purpose as anonymous namespace, but older style.
+/********************************************/
+
+FileName: src/main.cpp
+#include "../include/logger.hpp"
+
+void publicApi();       // from util.cpp
+void useLocalFunc();    // from local.cpp
+
+int main() {
+    log("Starting app");      // from inline function
+    globalCounter++;          // inline variable shared
+
+    publicApi();              // uses anonymous namespace internally
+    useLocalFunc();           // uses static function internally
+
+    return 0;
+}
