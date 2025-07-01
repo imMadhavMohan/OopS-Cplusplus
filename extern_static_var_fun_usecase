@@ -1,0 +1,105 @@
+/* STATIC */
+/*static at file scope gives internal linkage (each .cpp gets its own instance). Doesn't share. */
+// x.hpp
+static int counter = 0; // Each translation unit (y.cpp, z.cpp) gets its own copy
+
+// y.cpp
+#include "x.hpp"
+void incrementY() { ++counter; }
+
+// z.cpp
+#include "x.hpp"
+void incrementZ() { ++counter; }
+
+Here, counter in y.cpp is not the same as in z.cpp.
+/**************************************/
+
+/* EXTERN */
+What to do if you want a shared variable:
+// x.hpp
+extern int counter;  // Declaration
+
+// x.cpp
+int counter = 0;     // Definition
+
+Then in y.cpp and z.cpp, include x.hpp. Now they all refer to the same counter.
+/************************************/
+
+
+
+/************************************/
+// x.hpp NON_inline fun will cause error , when included in y.cpp and z.cpp, include x.hpp. 
+// which will cause a linker error (multiple definition of 'myFunction'), violating the One Definition Rule (ODR).
+void myFunction() {
+    // some logic
+}
+
+/************SOLU**********************/
+To Fix: Use inline
+// x.hpp
+inline void myFunction() {
+    // some logic
+}
+Now y.cpp and z.cpp can include x.hpp safely. Each translation unit will get its own inline version,
+
+// x.hpp
+void myFunction();  // Declaration only by default "extern"
+
+
+// x.cpp
+#include "x.hpp"
+// define in any *.cpp file
+void myFunction() {
+    // actual code
+}
+Now, any .cpp file including x.hpp can call myFunction(), and there's only one definition, so no linker errors.
+
+/************************************/
+// x.hpp
+static void helper() {
+    // logic
+}
+Each .cpp that includes x.hpp will get its own copy of helper(). This is legal, but means:
+The functions are not shared. It doesn’t violate ODR because each is separate.
+
+// Note: funs are by default "extern" but vars aren't.
+
+/**************Problem********************/
+// x.hpp
+inline void myFunction() {
+    // some logic
+}
+int var = 10;
+
+int var = 10;?
+This is a non-static, non-inline variable definition in a header file. That creates a problem when this header is included in multiple .cpp files:
+⚠️ Problem:
+Each .cpp file that includes x.hpp will define its own copy of var, leading to a multiple definition linker error.
+This violates the One Definition Rule (ODR) in C++. While the compiler is okay with this, the linker will complain when it sees multiple int var definitions across different object files.
+
+/************Fix***********************/
+// x.hpp
+extern int var;  // declaration only
+
+inline void myFunction() {
+    // some logic
+}
+
+// x.cpp (or any one .cpp file)
+#include "x.hpp"
+
+int var = 10;  // actual definition
+
+Now every .cpp including x.hpp refers to the same var.
+
+/************2nd_Fix******************/
+inline variable (C++17 and later)
+If you're using C++17 or newer, you can write:
+// x.hpp
+inline int var = 10;
+
+inline void myFunction() {
+    // some logic
+}
+This allows the variable to be defined in the header and included in multiple translation units without linker errors, because inline on a variable in C++17+ means 
+“it's okay to have this definition in multiple .cpps.”
