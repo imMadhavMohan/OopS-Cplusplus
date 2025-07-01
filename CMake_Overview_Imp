@@ -1,0 +1,113 @@
+/*CMAKE_PROJ*/
+MyProject/
+├── CMakeLists.txt         # Root (trigger point)
+├── app/                   # Executable
+│   ├── main.cpp
+│   └── CMakeLists.txt
+├── mylib_static/          # Static library
+│   ├── static_lib.cpp
+│   ├── static_lib.hpp
+│   └── CMakeLists.txt
+├── mylib_shared/          # Shared library
+│   ├── shared_lib.cpp
+│   ├── shared_lib.hpp
+│   └── CMakeLists.txt
+
+🔹 Root CMakeLists.txt 
+cmake_minimum_required(VERSION 3.14)
+project(MyProject)
+
+set(CMAKE_CXX_STANDARD 17)
+
+# Add subdirectories
+add_subdirectory(mylib_static)
+add_subdirectory(mylib_shared)
+add_subdirectory(app)
+
+🔹 mylib_static/CMakeLists.txt
+add_library(mylib_static STATIC
+    static_lib.cpp
+    static_lib.hpp
+)
+
+target_include_directories(mylib_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+🔹 mylib_shared/CMakeLists.txt
+add_library(mylib_shared SHARED
+    shared_lib.cpp
+    shared_lib.hpp
+)
+
+target_include_directories(mylib_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+🔹 app/CMakeLists.txt
+add_executable(myapp main.cpp)
+
+target_link_libraries(myapp
+    PRIVATE
+        mylib_static
+        mylib_shared
+)
+
+
+/*
+mkdir build
+cd build
+cmake ..
+cmake --build .
+*/
+
+
+/***********************Eg: Second ***********************************/
+| Command                 | Use in this project? | Best Location            | Notes                                 |
+| ----------------------- | -------------------- | ------------------------ | ------------------------------------- |
+| `add_library()`         | ✅ Yes                | In lib subdirs           | To create libs                        |
+| `include_directories()` | ✅ (but avoid)        | In lib subdirs           | Prefer `target_include_directories()` |
+| `include()`             | ✅ Optional           | Root or module-heavy     | To include other `.cmake` files       |
+| `option()`              | ✅ Recommended        | In root `CMakeLists.txt` | For enabling/disabling features       |
+
+🔹 MyProject/CMakeLists.txt (root)
+cmake_minimum_required(VERSION 3.14)
+project(MyProject)
+
+# Use C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Optionally choose to build shared library
+option(BUILD_SHARED "Build shared lib (ON=shared, OFF=static only)" ON)
+
+# Add subdirectories (each has its own CMakeLists.txt)
+add_subdirectory(mylib_static)
+add_subdirectory(mylib_shared)
+add_subdirectory(app)
+
+🔹 mylib_static/CMakeLists.txt
+# Create static library
+add_library(mylib_static STATIC static_lib.cpp)
+
+# Add public include path
+target_include_directories(mylib_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+🔹 mylib_shared/CMakeLists.txt
+# Choose SHARED or not via top-level option
+if(BUILD_SHARED)
+    add_library(mylib_shared SHARED shared_lib.cpp)
+else()
+    add_library(mylib_shared STATIC shared_lib.cpp)
+endif()
+
+# Add public include path
+target_include_directories(mylib_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+🔹 app/CMakeLists.txt
+# Create executable
+add_executable(myapp main.cpp)
+
+# Link to both libraries
+target_link_libraries(myapp
+    PRIVATE
+        mylib_static
+        mylib_shared
+)
+
