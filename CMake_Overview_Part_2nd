@@ -1,0 +1,165 @@
+1. STATIC, SHARED, and INTERFACE — used in add_library()
+These define what kind of library you’re creating.
+🔹 STATIC
+Creates a static library (.a on Linux/macOS, .lib on Windows).
+Code is copied into each executable at link time.
+Example:
+add_library(mylib STATIC mylib.cpp)
+
+🔹 SHARED
+Creates a shared (dynamic) library (.so, .dll, .dylib).
+Code is linked at runtime, not copied into the executable.
+Example:
+add_library(mylib SHARED mylib.cpp)
+
+🔹 INTERFACE
+No compiled library file is generated.
+Use for header-only libraries or compile flags only.
+You provide include directories, compile options, etc.
+Example:
+add_library(header_only INTERFACE)
+target_include_directories(header_only INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+2. PUBLIC, PRIVATE, INTERFACE — used in target_link_libraries(), target_include_directories(), etc.
+These keywords define the visibility and propagation of properties (like includes or libraries).
+| Keyword     | Applies to Target? | Propagates to Targets that Depend On It? |
+| ----------- | ------------------ | ---------------------------------------- |
+| `PRIVATE`   | ✅ Yes              | ❌ No                                     |
+| `PUBLIC`    | ✅ Yes              | ✅ Yes                                    |
+| `INTERFACE` | ❌ No               | ✅ Yes                                    |
+
+🔹 PRIVATE
+Used only within the current target.
+Does not affect any other target that depends on this one.
+   target_include_directories(mylib PRIVATE include/)
+The includes are needed to build mylib, but not for anything using mylib.
+
+🔹 PUBLIC
+Used in the current target and also exposed to anything that links to this target.
+  target_include_directories(mylib PUBLIC include/)
+Both mylib and anything using mylib will get access to the include/ path.
+
+🔹 INTERFACE
+Not used by this target itself, only passed along to consumers.
+  target_include_directories(header_only INTERFACE include/)
+Used in header-only libraries or compile flags that only need to be passed to dependents.
+
+💡 Practical Example: target_include_directories()
+target_include_directories(mylib_static
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+)
+This means:
+mylib_static needs the headers to compile
+Any target that links to mylib_static will also get the include path
+
+💡 Practical Example: target_link_libraries()
+target_link_libraries(myapp
+    PRIVATE mylib_static
+    PUBLIC mylib_shared
+)
+This means:
+mylib_static is linked into myapp, but not exposed to others.
+mylib_shared is linked into myapp, and if another target links to myapp, it also knows it needs mylib_shared.
+
+/**************Let's Breakdown PRIVATE *********************/
+MyProject/
+├── include/
+│   └── mylib_internal.hpp   # Only needed internally by mylib
+├── mylib/
+│   ├── mylib.cpp
+│   ├── mylib.hpp            # Public header
+│   └── CMakeLists.txt
+├── app/
+│   ├── main.cpp             # Uses mylib.hpp
+│   └── CMakeLists.txt
+
+🔹 In mylib/CMakeLists.txt:
+add_library(mylib mylib.cpp mylib.hpp)
+target_include_directories(mylib PRIVATE ${PROJECT_SOURCE_DIR}/include)
+
+🔹 In app/CMakeLists.txt:
+add_executable(myapp main.cpp)
+target_link_libraries(myapp PRIVATE mylib)
+
+🤔 So What Happens?
+mylib needs mylib_internal.hpp to compile. The PRIVATE include gives it access.
+But myapp, which depends on mylib, does not get that include/ path we just kept mylib_internal.hpp(encapsulate & isolated it from myapp).
+So main.cpp cannot include mylib_internal.hpp (and shouldn’t).
+
+🔁 Compare with PUBLIC
+If you had used:
+  target_include_directories(mylib PUBLIC ${PROJECT_SOURCE_DIR}/include)
+Then both mylib and anything using mylib (like myapp) would see mylib_internal.hpp.
+That’s not good if you meant for those headers to be internal.
+
+| Variable                   | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
+| `CMAKE_SOURCE_DIR`         | Top-level source directory (where top CMakeLists.txt is) |
+| `CMAKE_CURRENT_SOURCE_DIR` | Directory of the current `CMakeLists.txt`                |
+| `CMAKE_BINARY_DIR`         | Root of the build directory                              |
+| `CMAKE_CURRENT_BINARY_DIR` | Build dir for the current subdirectory                   |
+| `PROJECT_SOURCE_DIR`       | Source dir of the current project (`project()` call)     |
+
+MyProject/
+├── CMakeLists.txt               # Top-level (project(MyProject))
+├── lib/
+│   ├── CMakeLists.txt           # Subdir (project(MyLib))
+│   └── mylib.cpp
+├── tools/
+│   ├── CMakeLists.txt           # Subdir (NO project() here)
+│   └── tool.cpp
+
+🔹 Root CMakeLists.txt
+cmake_minimum_required(VERSION 3.14)
+project(MyProject)
+
+message(STATUS "ROOT")
+message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_subdirectory(lib)
+add_subdirectory(tools)
+
+🔹 lib/CMakeLists.txt
+project(MyLib)
+
+message(STATUS "LIB")
+message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
+
+🔹 tools/CMakeLists.txt
+project(MyLib)
+
+message(STATUS "LIB")
+message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
+
+Output:
+-- ROOT
+CMAKE_SOURCE_DIR: /home/user/MyProject
+PROJECT_SOURCE_DIR: /home/user/MyProject
+CMAKE_CURRENT_SOURCE_DIR: /home/user/MyProject
+
+-- LIB
+CMAKE_SOURCE_DIR: /home/user/MyProject
+PROJECT_SOURCE_DIR: /home/user/MyProject/lib
+CMAKE_CURRENT_SOURCE_DIR: /home/user/MyProject/lib
+
+-- TOOLS
+CMAKE_SOURCE_DIR: /home/user/MyProject
+PROJECT_SOURCE_DIR: /home/user/MyProject
+CMAKE_CURRENT_SOURCE_DIR: /home/user/MyProject/tools
+
+
+Note: 
+| Variable                   | Description                                                         |
+| -------------------------- | ------------------------------------------------------------------- |
+| `CMAKE_SOURCE_DIR`         | The **top-level** source directory where CMake was first invoked.   |
+| `PROJECT_SOURCE_DIR`       | The source directory of the **current `project()` scope**.          |
+| `CMAKE_CURRENT_SOURCE_DIR` | The directory of the **currently processed `CMakeLists.txt` file**. |
+
+project(MyProject VERSION 1.2.3 LANGUAGES CXX C):
+Defines the name, version, languages, and scope of the current CMake project. It also sets important internal variables like PROJECT_SOURCE_DIR, PROJECT_BINARY_DIR, etc.
